@@ -14,7 +14,8 @@
 #define PTR_SIZE (sizeof(void*))
 
 #define mpitype MPI_DOUBLE
-
+#define MPI_TYPE MPI_FLOAT
+#define TYPE float
 //funkcja na stronie 487 w ksiazce
 void *my_malloc(
     int id, //process rank
@@ -127,246 +128,221 @@ void read_row_striped_matrix(
 
 // FROM BOOK END
 
-//na chwile obecna proponuje zhardcodowac maciez 3x3,
-//jak algorytm zadziala to zrobic uniklanie nxm x mxl
-int matrixA[3][3] = {{1,2,1},{2,5,3},{2,4,1}};
-int matrixB[3][3] = {{2,1,0},{1,1,1},{3,2,2}};
-//wynik AxB = {{7,5,4},{18,13,11},{11,8,6}}
-int resultMatrix[3][3];
-struct MultiplicationHelper {
-	int A;
-	int B;
+//zeby przechowywac wymiary macierzy razem
+struct MatrixDim{
+	int row;
+	int col;
 };
-
-int size = 3;
-
-int getRowById(int id){
-    return id/size;
+	
+int getRowById(int id, struct MatrixDim m){
+    return id/m.col;
 }
 
-int getColById(int id){
-    return id%size;
+int getColById(int id, struct MatrixDim m){
+    return id%m.row;
 }
 
-int getIdToSendLeft(int id){
-    if(id%size == 0)
-        return id+size-1;
+int getIdToSendLeft(int id, struct MatrixDim m){
+    if(id%m.col == 0)
+        return id+m.col-1;
     else
         return id-1;
 }
 
-int getIdToRecvRight(int id){
-    if((id+1)%size == 0)
-        return id-size+1;
+int getIdToRecvRight(int id, struct MatrixDim m){
+    if((id+1)%m.col == 0)
+        return id-m.col+1;
     else
         return id+1;
 }
 
-int getIdOfLastInRow(int id){
+int getIdOfLastInRow(int id, struct MatrixDim m){
     int i = id;
-    while((i+1)%size != 0)
+    while((i+1)%m.col != 0)
         i++;
     return i;
 }
 
-int getIdToSendUp(int id){
-    if(id-size < 0)
-        return id+(size*size - size);
+int getIdToSendUp(int id, struct MatrixDim m){
+    if(id-m.row < 0)
+        return id+(m.row*m.col - m.col);
     else
-        return id-size;
+        return id-m.col;
 }
 
-int getIdToRecvDown(int id){
-    if(id+size > size*size - 1)
-        return id%size;
+int getIdToRecvDown(int id, struct MatrixDim m){
+    if(id+m.row > m.row*m.col - 1)
+        return id%m.col;
     else
-        return id+size;
+        return id+m.col;
 }
 
-int getIdLeftByDist(int id, int dist){
+int getIdLeftByDist(int id, int dist, struct MatrixDim m){
     int leftId = id;
     int i;
     for(i = 0; i  <dist; i++)
-        leftId = getIdToSendLeft(leftId);
+        leftId = getIdToSendLeft(leftId,m);
     return leftId;
 }
 
-int getIdRightByDist(int id, int dist){
+int getIdRightByDist(int id, int dist, struct MatrixDim m){
     int rightId = id;
     int i;
     for(i = 0; i  <dist; i++)
-        rightId = getIdToRecvRight(rightId);
+        rightId = getIdToRecvRight(rightId,m);
     return rightId;
 }
 
-int getIdUpByDist(int id, int dist){
+int getIdUpByDist(int id, int dist, struct MatrixDim m){
     int upId = id;
     int i;
     for(i = 0; i  <dist; i++)
-        upId = getIdToSendUp(upId);
+        upId = getIdToSendUp(upId,m);
     return upId;
 }
 
-int getIdDownByDist(int id, int dist){
+int getIdDownByDist(int id, int dist, struct MatrixDim m){
     int downId = id;
     int i;
     for(i = 0; i  <dist; i++)
-        downId = getIdToRecvDown(downId);
+        downId = getIdToRecvDown(downId,m);
     return downId;
 }
-    
+
 int main(int argc, char *argv[])
 {      
-    int    myid, numprocs;
+	int    myid, numprocs;
     int    namelen;
     char   processor_name[MPI_MAX_PROCESSOR_NAME];
 	int i,j,l;
-	struct MultiplicationHelper AxBElements[3][3];
     
     MPI_Init(&argc,&argv);
     MPI_Comm_size(MPI_COMM_WORLD,&numprocs);
     MPI_Comm_rank(MPI_COMM_WORLD,&myid);
     MPI_Get_processor_name(processor_name,&namelen);
-    
     //READ FILE
     double **a; //a matrix
     double *storageA; //matrix elements stored here
     double **b; //b matrix
     double *storageB; //matrix elements stored here
-    int m; //rows in matrix
-    int n; //columns in matrix
+    struct MatrixDim A, B, RES;
     
     //pobieranie macierzy A z pliku
     //dane sa pobierane i zapisywane w ostatnim elemencie wiersza
     read_row_striped_matrix(argv[1], (void*) &a,
-        (void*) &storageA, mpitype, &m, &n, MPI_COMM_WORLD);
-        
+        (void*) &storageA, mpitype, &A.row, &A.col, MPI_COMM_WORLD);
+
     //pobieranie macierzy B z pliku
     //dane sa pobierane i zapisywane w ostatnim elemencie wiersza
     read_row_striped_matrix(argv[2], (void*) &b,
-        (void*) &storageB, mpitype, &m, &n, MPI_COMM_WORLD);
+        (void*) &storageB, mpitype, &B.row, &B.col, MPI_COMM_WORLD);
         
-    int myI = getRowById(myid);
-    int myJ = getColById(myid);
-    
-    int myA;
-    int myB;
-        
-        
+    RES.row = A.row;
+    RES.col = B.col;
     //TODO
+    // jeżeli n != n2 MPI ABORD, bo nie mozna mnozyc
+    if(myid == 0 && A.col != B.row){
+    	MPI_Abort (MPI_COMM_WORLD, 1);
+    }
+	if(myid == 0){
+		printf("%d\t%d\t%d\t%d\t%d\t%d\n",A.col, A.row, B.col, B.row, RES.col, RES.row);
+	}
+    TYPE myA;
+    TYPE myB;
     //KAZDY PROCES KTORY JEST 'OSTATNI W DANYM WIERSZU' ZAWIERA WSZYSTKIE ELEMENTY MACIERZY Z WIERSZA
-    //NALEZY ZROBIC DLA DOWOLNEJ WIELKOSCI MACIERZY ZEBY WYSYLAL WARTOSCI
-    if((myid+1)%size==0){
-        
-        //TODO na double
-        myA = storageA[2];
-        int tosendA1 = storageA[0];
-        int tosendA2 = storageA[1];
-        
-
-        //TODO
+    if((myid+1)%A.col==0 && myid < A.row*A.col){
         //W PETLI WYSYLANIE WARTOSCI DO WSZYSTKICH ELEMENTOW WIERSZA
-        MPI_Send(&tosendA1, 1, MPI_INT, getIdToSendLeft(myid)-1, 0, MPI_COMM_WORLD);
-        MPI_Send(&tosendA2, 1, MPI_INT, getIdToSendLeft(myid), 0, MPI_COMM_WORLD);
-        myA = storageA[2];
-    }else {
-        MPI_Recv(&myA, 1, MPI_INT, getIdOfLastInRow(myid), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        for(i = 0; i < A.col-1; ++i) {
+        	TYPE tosend = storageA[A.col-2 -i];
+        	MPI_Send(&tosend, 1, MPI_TYPE, getIdToSendLeft(myid,A)-i, 0, MPI_COMM_WORLD);
+        }
+        myA = storageA[A.col-1];
+    }else 
+    //Jesli beda macierze innych wymiarow to recv nie zablokuje programu bo bedzietyle oczekiwan ile elementow macierzy A, to samo tyczy sie nizej B
+    if(myid < A.col*A.row && (myid+1)%A.col != 0){
+        MPI_Recv(&myA, 1, MPI_TYPE, getIdOfLastInRow(myid,A), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
     
-    if((myid+1)%size==0){
-        myB = storageB[2];
-        int tosendB1 = storageB[0];
-        int tosendB2 = storageB[1];
-        
-        //TODO
+    if((myid+1)%B.col==0 && myid < B.col*B.row){
         //W PETLI WYSYLANIE WARTOSCI DO WSZYSTKICH ELEMENTOW WIERSZA
-        MPI_Send(&tosendB1, 1, MPI_INT, getIdToSendLeft(myid)-1, 0, MPI_COMM_WORLD);
-        MPI_Send(&tosendB2, 1, MPI_INT, getIdToSendLeft(myid), 0, MPI_COMM_WORLD);
-        myB = storageB[2];
-    }else {
-        MPI_Recv(&myB, 1, MPI_INT, getIdOfLastInRow(myid), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        for(i = 0; i < B.col-1; ++i) {
+        	TYPE tosend = storageB[B.col-2 -i];
+        	MPI_Send(&tosend, 1, MPI_TYPE, getIdToSendLeft(myid,B)-i, 0, MPI_COMM_WORLD);
+        }
+        myB = storageB[B.col-1];
+    }else if(myid < B.row*B.col && (myid+1)%B.col !=0){
+        MPI_Recv(&myB, 1, MPI_TYPE, getIdOfLastInRow(myid,B), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
-    
-    
+    if(myid == 0) printf("thyju");
     //TUTAJ NASTEPUJE PRZESUWANIE W LEWO ELEMENTOW MACIERZY A O ILOSC ROWNA NUMEROWI WIERSZA (NUMEROWANIE OD 0)
-    int distToSendHorizontally = getRowById(myid);
+    int distToSendHorizontally = getRowById(myid,A);
     if(distToSendHorizontally!=0){
-        MPI_Send(&myA, 1, MPI_INT, getIdLeftByDist(myid, distToSendHorizontally), 0, MPI_COMM_WORLD);
-        MPI_Recv(&myA, 1, MPI_INT, getIdRightByDist(myid, distToSendHorizontally), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Send(&myA, 1, MPI_TYPE, getIdLeftByDist(myid, distToSendHorizontally,A), 0, MPI_COMM_WORLD);
+        MPI_Recv(&myA, 1, MPI_TYPE, getIdRightByDist(myid, distToSendHorizontally,A), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
     
     //TUTAJ NASTEPUJE PRZESUWANIE W GORE ELEMENTOW MACIERZY B O ILOSC ROWNA NUMEROWI KOLUMNY (NUMEROWANIE OD 0)
-    int distToSendVertically = getColById(myid);
+    int distToSendVertically = getColById(myid,B);
     if(distToSendVertically!=0){
-        MPI_Send(&myB, 1, MPI_INT, getIdUpByDist(myid, distToSendVertically), 0, MPI_COMM_WORLD);
-        MPI_Recv(&myB, 1, MPI_INT, getIdDownByDist(myid, distToSendVertically), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Send(&myB, 1, MPI_TYPE, getIdUpByDist(myid, distToSendVertically,B), 0, MPI_COMM_WORLD);
+        MPI_Recv(&myB, 1, MPI_TYPE, getIdDownByDist(myid, distToSendVertically,B), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
-
-    
-    
-    //FRAGMENT STAREGO KODU. NALEZY ODKOMENTOWAC ABY UZYC ZAHARDKODOWANYCH MACIERZY 3X3 Z TEGO KODU
-    /*for(i = 0; i < 3; ++i){
-        for(j = 0; j < 3; ++j){
-            AxBElements[i][j].A = matrixA[i][(j+i) % (3)];
-            AxBElements[i][j].B = matrixB[(i+j) %3][j];
-        }
-    }
-        
-    for(i = 0; i < 3; ++i){
-		for(j = 0; j < 3; ++j){    
-            matrixA[i][j] = AxBElements[i][j].A;
-            matrixB[i][j] = AxBElements[i][j].B;
-        }
-	}
-    
-     myA = matrixA[myI][myJ];
-     myB = matrixB[myI][myJ];
-     */
      
-    int myRes = 0;
+    TYPE myRes = 0;
     
     //ROZPOCZYNA SIE ITERACJA OBLICZANIA
     //W KAZDYM KROKU LICZONY JEST ILOCZYN OBECNEJ WARTOSCI A ORAZ B
     //A NASTEPNIE WARTOSCI MACIERZY A SA PRZESYLANE W LEWO, A WARTOSCI MACIERZY B W GORE
     myRes += myA*myB;
-    for(l = 1; l < 3; ++l){
-        MPI_Send(&myA, 1, MPI_INT, getIdToSendLeft(myid), 0, MPI_COMM_WORLD);
-        MPI_Send(&myB, 1, MPI_INT, getIdToSendUp(myid), 0, MPI_COMM_WORLD);
-        MPI_Recv(&myA, 1, MPI_INT, getIdToRecvRight(myid), 0, MPI_COMM_WORLD,
+    for(l = 1; l < A.col; ++l){
+        MPI_Send(&myA, 1, MPI_TYPE, getIdToSendLeft(myid,A), 0, MPI_COMM_WORLD);
+        MPI_Send(&myB, 1, MPI_TYPE, getIdToSendUp(myid,B), 0, MPI_COMM_WORLD);
+        MPI_Recv(&myA, 1, MPI_TYPE, getIdToRecvRight(myid,A), 0, MPI_COMM_WORLD,
              MPI_STATUS_IGNORE);
-        MPI_Recv(&myB, 1, MPI_INT, getIdToRecvDown(myid), 0, MPI_COMM_WORLD,
+        MPI_Recv(&myB, 1, MPI_TYPE, getIdToRecvDown(myid,B), 0, MPI_COMM_WORLD,
              MPI_STATUS_IGNORE);
         myRes += myA*myB;
     }
     
+	//przeniesc do MPI_INIT??
+	// i zwalniać w MPI_FINALIZE?
+	//TODO nie zwalniane jest
+    TYPE **resultMatrix = (TYPE **)malloc(RES.row * sizeof(TYPE *));
+    for (i=0; i<RES.row; i++)
+         resultMatrix[i] = (TYPE *)malloc(RES.col * sizeof(TYPE));
+    
     //NASTEPUJE ZEBRANIE WSZYSTKICH WYNIKOW DO PROCESU 0       
+    int size = RES.col*RES.row;
+    if(size > numprocs) size = numprocs;
+        
     if(myid==0){
         resultMatrix[0][0] = myRes;
-        for(i = 1; i < numprocs; i++){
-            int res;
-            MPI_Recv(&res, 1, MPI_INT, i, 0, MPI_COMM_WORLD,
+        for(i = 1; i < size; i++){
+            TYPE res;
+            MPI_Recv(&res, 1, MPI_TYPE, i, 0, MPI_COMM_WORLD,
                 MPI_STATUS_IGNORE);
-            resultMatrix[getRowById(i)][getColById(i)] = res;
+            //printf("r: %d\tc: %d\tw: %.2f\n",getRowById(i,RES),getColById(i,RES), res);
+            resultMatrix[getRowById(i,RES)][getColById(i,RES)] = res;
         }
-    }else{
-        MPI_Send(&myRes, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    }else if(myid < size){
+    	
+        MPI_Send(&myRes, 1, MPI_TYPE, 0, 0, MPI_COMM_WORLD);
     }
 	
     //WYPISANIE WYNIKU
     if(myid == 0){
         printf("result\n");	
-        for(i = 0; i < 3; ++i){
-            for(j = 0; j < 3; ++j){
-                printf("%d\t", resultMatrix[i][j]);
+        for(i = 0; i < RES.row; ++i){
+            for(j = 0; j < RES.col; ++j){
+                printf("%.2f\t", resultMatrix[i][j]);
             }
             printf("\n");
         }
     }
-
     
 
     MPI_Finalize();
-
+    
     return 0;
 }
 
