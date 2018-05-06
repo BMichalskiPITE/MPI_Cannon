@@ -14,6 +14,18 @@
 #define START_SEND 6
 #define END_SEND 7
 
+/*do profilowania:
+
+kompilacja:
+/opt/nfs/mpich-3.2/bin/mpicc -o main main.c              -I/opt/nfs/mpe2-2.4.9b/include -L/opt/nfs/mpe2-2.4.9b/lib            -lmpe -lm -lpthread
+
+uruchomienie:
+/opt/nfs/mpich-3.2/bin/mpiexec  -n 1 ./main matrix.txt matrix2.txt
+/opt/nfs/mpich-3.2/bin/mpiexec  -n 4 ./main matrix.txt matrix2.txt
+/opt/nfs/mpich-3.2/bin/mpiexec  -n 9 ./main matrix.txt matrix2.txt
+/opt/nfs/mpich-3.2/bin/mpiexec  -n 36 ./main matrix.txt matrix2.txt
+*/
+
 
 int MPI_Init( int *argc, char ***argv )
 {
@@ -61,7 +73,9 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
     int ret, myid;
 	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
     MPE_Log_event(START_SEND,myid, "Start\tsend");
-    ret = PMPI_Send(buf, count, datatype, dest, tag, comm );
+	MPI_Request request;
+    ret = PMPI_Isend(buf, count, datatype, dest, tag, comm, &request );
+	MPI_Request_free(&request);
     MPE_Log_event(END_SEND,myid, "End\tsend");
     return ret; 
 } 
