@@ -1,14 +1,17 @@
 # MPI Cannon
 
-## Comile
+## Run
+Makefile uruchamia za nas wszystko, trzeba podać jedynie nazwy plikow z macierzami
 ```
-mpicc main.c -o main
+make run MATRIX1=<nazwa macierzy A> MATRIX2=<nazwa macierzy B>
+
+make run MATRIX1=matrix512_1.txt MATRX2=matrix512_2.txt
 ```
 
-##Run
-```
-mpiexec -n 1 ./main matrix.txt matrix2.txt
-mpiexec -n 4 ./main matrix.txt matrix2.txt
-mpiexec -n 9 ./main matrix.txt matrix2.txt
-mpiexec -n 36 ./main matrix.txt matrix2.txt
-```
+## Generator macierz
+tworzy pliki matrix(rozmiar)_(1|2).txt zgodne z oczwkiwanym formatem programu mpi
+'''
+python3 generate.py <rozmiar>
+
+python3 generate.py 512
+'''
