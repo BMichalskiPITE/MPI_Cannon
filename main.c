@@ -3,6 +3,20 @@
 #include <stdlib.h>
 #include <math.h>
 
+/*
+kompilacja
+/opt/nfs/mpich-3.2/bin/mpicc -o main main.c              -I/opt/nfs/mpe2-2.4.9b/include -L/opt/nfs/mpe2-2.4.9b/lib            -lmpe -lm -lpthread
+*/
+
+/*
+uruchomienie
+ /opt/nfs/mpich-3.2/bin/mpiexec  -n 1 ./main matrix.txt matrix2.txt
+ /opt/nfs/mpich-3.2/bin/mpiexec  -n 4 ./main matrix.txt matrix2.txt
+ /opt/nfs/mpich-3.2/bin/mpiexec  -n 9 ./main matrix.txt matrix2.txt
+ /opt/nfs/mpich-3.2/bin/mpiexec  -n 36 ./main matrix.txt matrix2.txt
+
+*/
+
 
 //FROM BOOK START
 
@@ -362,6 +376,7 @@ int main(int argc, char *argv[])
 	if(myid == 0){
 		printf("%d\t%d\t%d\t%d\t%d\t%d\n",A.col, A.row, B.col, B.row, RES.col, RES.row);
 	}
+
     TYPE myA;
     TYPE myB;
     
@@ -391,6 +406,7 @@ int main(int argc, char *argv[])
     int matrixDim = A.col;
 
     
+	
     int proc = 0;
     int meProc = (myid%A.col);
     //ITEROWANIE PO PROCESACH W DANYM WIERSZU BLOKU
@@ -401,6 +417,7 @@ int main(int argc, char *argv[])
     int currentRowForSend = 0;
     int colOffset = (myid%procSqrt)*myRows; //offset kolumny, czyli pierwszy proces ma 0, pozniej ile trzeba dodac do kolumny zeby miec pierwsza kolumne przynalezna do procesu
     
+
     
     //WYSYLANE MACIERZY A DO PROCESOW
         currentRowForSend = 0;
@@ -408,23 +425,26 @@ int main(int argc, char *argv[])
         int rows = BLOCK_SIZE(myid, numprocs, A.col); // ILE PRZECZYTALEM WIERSZY MACIERZY
         i = 0;
         int row = 0; 
+		
         for(row = 0; row<rows; row++)
         {
             for(i = 0; i<A.col; i+=myRows)
             {
+			
                 int procInRow = i/myRows; //NUMER PROCESU W WIERSZU DO WYSLANIA
                 if(procInRow == meProc){
                     continue;
                 }else{
                     int procNumber = rowOfProcess*procSqrt+procInRow;
-                    MPI_Send(&a[currentRowForSend][i], myRows, MPI_TYPE, procNumber, row, MPI_COMM_WORLD);
+					MPI_Request request;
+                    MPI_Isend(&a[currentRowForSend][i], myRows, MPI_TYPE, procNumber, row, MPI_COMM_WORLD, &request);
                 }
+				
                 
             }  
             currentRowForSend++;
         }
-    
-    
+	    
 	//ODBIERANIE MACIERZY A OD PROCESOW
     for(proc = 0; proc < procSqrt; proc ++)
     {
@@ -475,7 +495,8 @@ int main(int argc, char *argv[])
                     continue;
                 }else{
                     int procNumber = rowOfProcess*procSqrt+procInRow;
-                    MPI_Send(&b[currentRowForSend][i], myRows, MPI_TYPE, procNumber, row, MPI_COMM_WORLD);
+					MPI_Request request;
+                    MPI_Isend(&b[currentRowForSend][i], myRows, MPI_TYPE, procNumber, row, MPI_COMM_WORLD, &request);
                 }
                 
             }  
@@ -517,9 +538,6 @@ int main(int argc, char *argv[])
     }
     
         
-
-
-    
     
     //SKEWING A
 	//ODPOWIEDNIE PRZESUWANIE WIERSZY MACIERZY A W LEWO , PRZESUWANIE O WARTOSC WIERSZA
@@ -536,13 +554,13 @@ int main(int argc, char *argv[])
                     int procNumber = rowOfProcess*procSqrt+leftProc;
 
                     int newLeftPlace = getNewLeftPos(place, places, colsPerProc);
-                    MPI_Send(&mA[row][place], 1, MPI_TYPE, procNumber, newLeftPlace, MPI_COMM_WORLD);
+					MPI_Request request;
+                    MPI_Isend(&mA[row][place], 1, MPI_TYPE, procNumber, newLeftPlace, MPI_COMM_WORLD, &request);
                 }
             
                 for(place = 0; place<myRows; place++){
                     int rightProc = getProcRightByDist(colOfProcess, place, places, matrixDim, procSqrt);
                     int procNumber = rowOfProcess*procSqrt+rightProc;
-
 
                     MPI_Recv(&mA[row][place]/*&test*/, 1, MPI_TYPE, procNumber, place, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
@@ -550,7 +568,6 @@ int main(int argc, char *argv[])
             }
         }
 
-    
     
     
     
@@ -570,7 +587,8 @@ int main(int argc, char *argv[])
                     int procNumber = topProc;
 
                     int newLeftPlace = getNewLeftPos(place, places, colsPerProc);
-                    MPI_Send(&mB[place][col], 1, MPI_TYPE, procNumber, newLeftPlace, MPI_COMM_WORLD);
+					MPI_Request request;
+                    MPI_Isend(&mB[place][col], 1, MPI_TYPE, procNumber, newLeftPlace, MPI_COMM_WORLD, &request);
                 }
             
                 for(place = 0; place<myRows; place++){
@@ -581,6 +599,7 @@ int main(int argc, char *argv[])
             }
         }
     
+	
 	
 //UWAGA macierz nA i nB JEST TRAKTOWANA JAKO NOWA MACIERZ TYMCZASOWA
 //WPROWADZONA W CELU PRZESUWANIA PO JEDNYM MACIERZY A I B, PONIEWAZ MACIERZE A I B NIE SA PRZESYLANE PO JEDNYM, LECZ PELNYMI PARTIAMI	
