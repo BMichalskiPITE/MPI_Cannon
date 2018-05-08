@@ -451,12 +451,15 @@ int main(int argc, char *argv[])
     RES.row = A.row;
     RES.col = B.col;
     // jeżeli n != n2 MPI ABORD, bo nie mozna mnozyc
-    if(myid == 0 && A.col != B.row){
+    if(myid == 0 && (A.col != B.col || A.row != B.row || sqrt(A.row)*sqrt(A.row) != A.row)) {
+		printf("Macierze wejsciowe nie sa kwadratowe lub nie sa takiego samego wymiaru!");
     	MPI_Abort (MPI_COMM_WORLD, 1);
     }
-	if(myid == 0){
-		//printf("%d\t%d\t%d\t%d\t%d\t%d\n",A.col, A.row, B.col, B.row, RES.col, RES.row);
+	if(myid == 0 && A.row%((int)sqrt(numprocs)) != 0 && ((int)sqrt(numprocs)) == sqrt(numprocs)){
+		printf("Wymiar macierzy wejsciowej musi byc podzielny bez reszty przez pierwiastek z liczby procesow!");
+    	MPI_Abort (MPI_COMM_WORLD, 1);
 	}
+
     TYPE myA;
     TYPE myB;
     
@@ -918,6 +921,17 @@ int main(int argc, char *argv[])
     	}
     	fclose(f);
     }	
+	
+	free(mA[0]);
+	free(mA);
+	free(nA[0]);
+	free(nA);
+	free(mB[0]);
+	free(mB);
+	free(nB[0]);
+	free(nB);
+	free(res[0]);
+	free(res);
 
     MPI_Finalize();
     return 0;
