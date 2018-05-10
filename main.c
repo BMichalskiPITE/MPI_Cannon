@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
     RES.row = A.row;
     RES.col = B.col;
     // jeżeli n != n2 MPI ABORD, bo nie mozna mnozyc
-    if(myid == 0 && (A.col != B.col || A.row != B.row || sqrt(A.row)*sqrt(A.row) != A.row)) {
+    if(myid == 0 && (A.col != B.col || A.row != B.row || A.col != A.row)) {
 		printf("Macierze wejsciowe nie sa kwadratowe lub nie sa takiego samego wymiaru!");
     	MPI_Abort (MPI_COMM_WORLD, 1);
     }
