@@ -26,7 +26,7 @@ uruchomienie:
 /opt/nfs/mpich-3.2/bin/mpiexec  -n 36 ./main matrix.txt matrix2.txt
 */
 
-
+// inicjalizacja MPI z uruchomieniem profilowania
 int MPI_Init( int *argc, char ***argv )
 {
 
@@ -35,27 +35,31 @@ int MPI_Init( int *argc, char ***argv )
 	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
 	MPE_Init_log();
     if(myid == 0){
+	    	//jeśli obecny proces jest procesem głownym uruchamiamy logowanie poszczegolnych operacji MPI
 		MPE_Describe_state(START_BCAST, END_BCAST,"broadcast","red");
 		MPE_Describe_state(START_ALLRED, END_ALLRED,"all reduce","yellow");
 		MPE_Describe_state(START_RECV, END_RECV,"receive","blue");
 		MPE_Describe_state(START_SEND, END_SEND,"send","white");
 	}
+	//Inicjalizacja procesu logowania dzialania programu
 	MPE_Start_log();
     return ret;
 
 }
 
+//funkcja konczaca dzialanie MPI
 int MPI_Finalize( void )
 {
 
     int ret;
+    //zapisanie logów do pliku
     MPE_Finish_log("mpe_logs");
     ret = PMPI_Finalize();
 
     return ret;
 
 }
-
+//przeladownie funkcji MPI_Bcast aby logowac wywolania funkcji
 int MPI_Bcast( void *buf, int count, MPI_Datatype datatype,  
 	       int root, MPI_Comm comm ) 
 { 
@@ -67,6 +71,7 @@ int MPI_Bcast( void *buf, int count, MPI_Datatype datatype,
     return ret; 
 } 
 
+//przeladownie funkcji MPI_Send aby logowac wywolania funkcji
 int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                     MPI_Comm comm)
 { 
@@ -80,6 +85,7 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
     return ret; 
 } 
 
+//przeladownie funkcji MPI_Recv aby logowac wywolania funkcji
 int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                            MPI_Comm comm, MPI_Status *status)                           
 { 
@@ -91,7 +97,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     return ret; 
 } 
 
-
+//przeladownie funkcji MPI_Allreduce aby logowac wywolania funkcji
 int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
                          MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 { 
@@ -103,8 +109,6 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     return ret; 
 } 
 
-//FROM BOOK START
-
 //define zdefiniowane na stronie 120 w ksiazce
 #define BLOCK_LOW(id,p,n) ((id)*(n)/(p))
 #define BLOCK_HIGH(id,p,n) (BLOCK_LOW((id)+1,p,n)-1)
@@ -112,8 +116,10 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 
 #define PTR_SIZE (sizeof(void*))
 
+//definicja typu MPI uzywanego w programie
 #define mpitype MPI_DOUBLE
 #define MPI_TYPE MPI_DOUBLE
+//definicja odpowiadajacego typu procego w c dla typu MPI
 #define TYPE double
 //funkcja na stronie 487 w ksiazce
 void *my_malloc(
@@ -130,6 +136,7 @@ void *my_malloc(
     return buffer;
 }
 
+//funkcja alokujaca pamiec dla 2-wymiarowej macierzy o zadancyh wymiarach
 double **alloc_2d(int rows, int cols) {
     double *data = (double *)malloc(rows*cols*sizeof(double));
     double **array= (double **)malloc(rows*sizeof(double*));
@@ -151,32 +158,33 @@ int get_size(MPI_Datatype t){
 }
 
 //funkcja na stronie 495 w ksiazce
+//funkcja wczytujaca macierz z pliku tekstowego do pamięci
 void read_row_striped_matrix(
-    char *s, // IN file name
-    void ***subs, // OUT 2d submatrix indicex
-    void **storage, // OUT submatrix stored 
-    MPI_Datatype dtype, //matrix element type
-    int *m, //matrix rows
-    int *n, //matrix cols
+    char *s, // nazwa pliku wejsciowego
+    void ***subs, // OUT pomacierz 2d
+    void **storage, // OUT podmacierz 2d 
+    MPI_Datatype dtype, // typ elementow macierzy
+    int *m, // liczba wierzy macierzy
+    int *n, // liczba kolumn macierzy
     MPI_Comm comm)
 {
-    int datum_size; // size of matrix element
+    int datum_size; // rozmiar elementu macierzy
     int i;
-    int id; //process rank
-    FILE *infileptr; //input file pointer
-    int local_rows; // rows on this proc
-    void ** lptr; // pointer into 'subs'
-    int p; // number of processes
-    void *rptr; //pointer into 'storage'
-    MPI_Status status; //result of receive
-    double x; //result of read
+    int id; // id procesu
+    FILE *infileptr; //wskaznik na plik wejsciowy
+    int local_rows; // wiersze w procesie
+    void ** lptr; // wkaznik na 'subs'
+    int p; // ilosc procesow
+    void *rptr; //wskaznik na 'storage'
+    MPI_Status status; //otrzmany wynik z recv
+    double x; //odczytana wartosc
     
     MPI_Comm_size(comm, &p);
     MPI_Comm_rank(comm, &id);
     datum_size = get_size(dtype);
     
-    /* Process p~'l opens file, reads size of matrix,
-    and broadcasts matrix dimensions to other procs ~!*/
+    /* proces p~'l otwiera plik, czyta rozmiar macierzy,
+    wysyla broadcast z rozmiarem macierzy do innych procesow ~!*/
     if (id == (p-1)){
         infileptr = fopen(s, "r");
         if(infileptr == NULL) *m = 0;
@@ -195,9 +203,6 @@ void read_row_striped_matrix(
     
     local_rows = BLOCK_SIZE(id, p, *m);
     
-    /*(1* r:ynamically allocate matrix. Allo"w double subscripting
-    through' a'. */
-    //printf("l rows: %d", local_rows);
     
     *storage = (void*)my_malloc(id,
         local_rows * *n * datum_size);
@@ -210,9 +215,9 @@ void read_row_striped_matrix(
         rptr += *n*datum_size;
     }
     
-    /* Process p-l reads blocks ot rows from file and
-    sends each block to the correct destination proces:>.
-    The last block it keeps. */
+    /* Proces p-l czyta bloki macierzy zpliku i
+    i wysyla blok do odpowiedniego docelowego procesu
+     */
 
     if(id == (p-1)){
         for (i = 0; i <= p-1; i++) {				
@@ -234,7 +239,7 @@ void read_row_striped_matrix(
     }
 }
 
-// FROM BOOK END
+
 
 //zeby przechowywac wymiary macierzy razem
 struct MatrixDim{
@@ -431,10 +436,10 @@ int main(int argc, char *argv[])
     MPI_Comm_rank(MPI_COMM_WORLD,&myid);
     MPI_Get_processor_name(processor_name,&namelen);
     //READ FILE
-    double **a; //a matrix
-    double *storageA; //matrix elements stored here
-    double **b; //b matrix
-    double *storageB; //matrix elements stored here
+    double **a; //macierz a
+    double *storageA; //przechowuje elementy macierzy a
+    double **b; //macierz b
+    double *storageB; //przechowuje elementy macierzy v
     struct MatrixDim A, B, RES;
     double t1, t2; 
 	t1 = MPI_Wtime(); 
@@ -580,7 +585,7 @@ int main(int argc, char *argv[])
             currentRowForSend++;
         }
     
-    
+    //ustawienie elementów macierzy poczatkowe
     for(proc = 0; proc < procSqrt; proc ++)
     {
         if(meProc == proc)
@@ -907,7 +912,7 @@ int main(int argc, char *argv[])
 			}
 			printf("\n");
 		}*/
-		
+	//zapis macirzy do pliku synikowego
     	FILE *f = fopen("result_matrix.txt", "w+");
     	if(f == NULL){
     		printf("Error opening file!\n");
@@ -921,7 +926,7 @@ int main(int argc, char *argv[])
     	}
     	fclose(f);
     }	
-	
+	//zwalnianie pamieci zaalokowanej
 	free(mA[0]);
 	free(mA);
 	free(nA[0]);
