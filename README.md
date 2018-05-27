@@ -1,17 +1,15 @@
 # MPI Cannon
 
 ## Run
-Makefile uruchamia za nas wszystko, trzeba podać jedynie nazwy plikow z macierzami
-```
-make run MATRIX1=<nazwa macierzy A> MATRIX2=<nazwa macierzy B>
 
-make run MATRIX1=matrix512_1.txt MATRX2=matrix512_2.txt
-```
+kompilacja i uruchomienie:
 
-## Generator macierz
-tworzy pliki matrix(rozmiar)_(1|2).txt zgodne z oczwkiwanym formatem programu mpi
-```
-python3 generate.py <rozmiar>
+wprowadzenie zmiennych srodowiskowych:
+ source /opt/nfs/config/source_bupc.sh
+ 
+kompilacja: 
+ upcc -gupc -network=mpi main.c -o main
 
-python3 generate.py 512
-```
+uruchomienie:
+ upcrun -n 4 ./main matrix.txt matrix.txt 
+w miejsce -n 4 WPISUJEMY ILOSC WATKOW
