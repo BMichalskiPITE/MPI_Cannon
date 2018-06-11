@@ -82,7 +82,7 @@ int indMat2Vec(int rows, int local_rows, int i, int j)
 //BO JEST DOSC SPORO OBLICZEN, ZWAZYWSZY ZE W KAZDEJ ITERACJI PO KILKA RAZY DLA KAZDEGO ELEMENTU MACIERZY JEST WYWOLYWANA TA FUNKCJA
 int indM2V(int i, int j)
 {
-	indMat2Vec(rows_global, local_rows_global, i, j);
+	return indMat2Vec(rows_global, local_rows_global, i, j);
 }
 
 int getBlockLeft(int block, int procsDim){
@@ -181,15 +181,31 @@ void printMatrix(int size, shared  TYPE* matrix)
 	}
 }
 
+void saveMatrix(int size, shared TYPE* matrix) {
+	FILE *f = fopen("result_matrix.txt", "w+");
+	if(f == NULL){
+		printf("Error opening file!\n");
+	} else {
+		fprintf(f, "%d %d ", size, size);
+		int i,j;
+		for(i = 0; i < size; ++i){
+	        for(j = 0; j < size; ++j){
+	            fprintf(f,"%.0f ", matrix[indM2V(i,j)]);
+	        }
+	    }
+	}
+	fclose(f);
+}
 //FUNKCJA DO ZROWNOLEGLENIA
 void copyMatrix(int size, shared  TYPE** toCopy, shared  TYPE** toPaste)
 {
 	int i, j;
-	for (i=0; i<size; i++){
+	upc_forall (i=0; i<size; i++;&(*toCopy)[i]){
 		for(j=0; j<size; j++){
 			(*toPaste)[indM2V(i, j)] = (*toCopy)[indM2V(i, j)];
 		}
 	}
+	upc_barrier;
 }
 
 int main(int argc, char *argv[]) {
@@ -211,6 +227,15 @@ int main(int argc, char *argv[]) {
   read_row_striped_matrix(argv[2], &b, ms, ns);
   int size = *ms;
   
+  shared int ** indM = (shared int **) upc_all_alloc(THREADS, size * sizeof(TYPE*));
+  for(i=0;i<size;++i){
+  	indM[i] = (shared int *) upc_all_alloc(THREADS, size * sizeof(TYPE));
+  }
+  for(i=0;i<size;++i){
+  	for(j=0;j<size;++j){
+  		indM[i][j] = indM2V(i,j);
+  	}
+  }
   upc_barrier;
   
   res = (shared TYPE*) upc_all_alloc(THREADS, size*size*sizeof(TYPE));
@@ -221,42 +246,42 @@ int main(int argc, char *argv[]) {
   
   
   //przesuwanie macierzy A w lewo
-  if(MYTHREAD == 0)
+  //if(MYTHREAD == 0)
   {
 	//CALY IF DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK TU WCHODZI
 	for(i=1; i<size; i++){
-		for(k=0; k<i; k++){
-			TYPE firstValue = a[indM2V(i, 0)];
+		upc_forall(k=0; k<i; k++;&a[indM[i][0]]){
+			TYPE firstValue = a[indM[i][0]];
 			for(j=0; j<size-1; j++){
-				a[indM2V(i, j)] = a[indM2V(i, j+1)];
+				a[indM[i][j]] = a[indM[i][j+1]];
 			}
 
-			a[indM2V(i, size-1)] = firstValue;
+			a[indM[i][size-1]] = firstValue;
 
 		}
 	}
   }
-  
+  upc_barrier;  
   //przesuwanie macierzy B w gore
-  if(MYTHREAD == 0)
+  //if(MYTHREAD == 0)
   {
 	  //CALY IF DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK TU WCHODZI
 	for(j=1; j<size; j++){
-		for(k=0; k<j; k++){
-			TYPE firstValue = b[indM2V(0, j)];
+		upc_forall(k=0; k<j; k++;&b[indM[0][j]]){
+			TYPE firstValue = b[indM[0][j]];
 			for(i=0; i<size-1; i++){
-				b[indM2V(i, j)] = b[indM2V(i+1, j)];
+				b[indM2V(i, j)] = b[indM[i+1][j]];
 			}
-			b[indM2V(size-1, j)] = firstValue;
+			b[indM[size-1][j]] = firstValue;
 		}
 	}
   }
-  
-  if(MYTHREAD ==0){
+  upc_barrier;
+  //if(MYTHREAD ==0){
 	  //METODA COPYMATRIX DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK WYWOLUJE
 	  copyMatrix(size, &a, &at);
 	  copyMatrix(size, &b, &bt);
-  }
+  //}
   
 	upc_forall( i = 0; i< size*size; i++; &a[i]){
 		res[i] = 0;
@@ -292,9 +317,14 @@ int main(int argc, char *argv[]) {
 		int firstElLeft = getFirstElementFromBlock(blockLeft);
 		int firstElTop = getFirstElementFromBlock(blockTop);
 		int firstElCurrent = getFirstElementFromBlock(k);
-		for(i = 0; i<local_rows_global*local_rows_global; i++)
+		
+		upc_forall(i = 0; i<local_rows_global*local_rows_global; i++;&at[mp(i)])
 		{
 			at[mp(firstElLeft+i)] = a[mp(firstElCurrent + i)];
+		}
+		
+		upc_forall(i = 0; i<local_rows_global*local_rows_global; i++;&bt[mp(i)])
+		{
 			bt[mp(firstElTop+i)] = b[mp(firstElCurrent + i)];
 		}
 
@@ -322,7 +352,7 @@ int main(int argc, char *argv[]) {
 		for(proc = 0 ;proc < THREADS; proc++)
 		{
 			int firstElCurrent = getFirstElementFromBlock(proc);
-			for(i=0; i<local_rows_global; i++){
+			upc_forall(i=0; i<local_rows_global; i++;&a[i]){
 				a[mp(firstElCurrent + (local_rows_global)*i + (local_rows_global-1))] = at[mp( firstElCurrent + (local_rows_global)*i + k)];
 				//OSTATNIEJ KOLUMNY A NIE MAMY W BLOKACH, MUSIMY POBRAC Z ATEMP
 			}
@@ -332,7 +362,7 @@ int main(int argc, char *argv[]) {
 		for(proc = 0 ;proc < THREADS; proc++)
 		{
 			int firstElCurrent = getFirstElementFromBlock(proc);
-			for(i=0; i<local_rows_global; i++){
+			upc_forall(i=0; i<local_rows_global; i++;&b[i]){
 				b[mp(firstElCurrent + i + (local_rows_global*(local_rows_global-1)))] = bt[mp(firstElCurrent + i + k*local_rows_global)]; 
 				//OSTATNIEGO WIERSZA B NIE MAMY W BLOKACH, MUSIMY POBRAC Z BTEMP
 			}
@@ -366,6 +396,7 @@ int main(int argc, char *argv[]) {
   if(MYTHREAD == 0)
   {
 	printMatrix(size, res);
+  	saveMatrix(size, res);
   }
   
   upc_barrier;
