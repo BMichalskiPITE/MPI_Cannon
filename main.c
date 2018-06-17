@@ -196,7 +196,7 @@ void saveMatrix(int size, shared TYPE* matrix) {
 	}
 	fclose(f);
 }
-//FUNKCJA DO ZROWNOLEGLENIA
+
 void copyMatrix(int size, shared  TYPE** toCopy, shared  TYPE** toPaste)
 {
 	int i, j;
@@ -209,9 +209,6 @@ void copyMatrix(int size, shared  TYPE** toCopy, shared  TYPE** toPaste)
 }
 
 int main(int argc, char *argv[]) {
-  if (MYTHREAD == 0) {
-    printf("Welcome to Berkeley UPC!!!\n");
-  }
   int i;
   int j;
   int k;
@@ -231,6 +228,7 @@ int main(int argc, char *argv[]) {
   for(i=0;i<size;++i){
   	indM[i] = (shared int *) upc_all_alloc(THREADS, size * sizeof(TYPE));
   }
+  
   for(i=0;i<size;++i){
   	for(j=0;j<size;++j){
   		indM[i][j] = indM2V(i,j);
@@ -246,9 +244,6 @@ int main(int argc, char *argv[]) {
   
   
   //przesuwanie macierzy A w lewo
-  //if(MYTHREAD == 0)
-  {
-	//CALY IF DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK TU WCHODZI
 	for(i=1; i<size; i++){
 		upc_forall(k=0; k<i; k++;&a[indM[i][0]]){
 			TYPE firstValue = a[indM[i][0]];
@@ -260,12 +255,8 @@ int main(int argc, char *argv[]) {
 
 		}
 	}
-  }
   upc_barrier;  
   //przesuwanie macierzy B w gore
-  //if(MYTHREAD == 0)
-  {
-	  //CALY IF DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK TU WCHODZI
 	for(j=1; j<size; j++){
 		upc_forall(k=0; k<j; k++;&b[indM[0][j]]){
 			TYPE firstValue = b[indM[0][j]];
@@ -275,13 +266,9 @@ int main(int argc, char *argv[]) {
 			b[indM[size-1][j]] = firstValue;
 		}
 	}
-  }
   upc_barrier;
-  //if(MYTHREAD ==0){
-	  //METODA COPYMATRIX DO ZROWNOLEGLENIA, WTEDY KAZDY WATEK WYWOLUJE
 	  copyMatrix(size, &a, &at);
 	  copyMatrix(size, &b, &bt);
-  //}
   
 	upc_forall( i = 0; i< size*size; i++; &a[i]){
 		res[i] = 0;
@@ -293,7 +280,7 @@ int main(int argc, char *argv[]) {
   int el;
   for(l = 0; l < procSqrt; l++){
 	  
-	  //COPYMATRIX DO ZROWNOLEGLENIA
+	  
 	  copyMatrix(size, &at, &a);
 	  copyMatrix(size, &bt, &b);
 	  
@@ -309,8 +296,6 @@ int main(int argc, char *argv[]) {
 
 	//PRZESLANIE CALEGO BLOKU DANYCH DO PROCESOW W LEWO I W GORE
 	for(k = 0; k < THREADS; k++){
-		//DO ZROWNOLEGLENIA
-		//OBECNIE KAZDY WATEK TU WCHODZI I ROBI TO SAMO CO POZOSTALE INNE
 		int blockLeft = getBlockLeft(k, procSqrt);
 		int blockTop = getBlockTop(k, procSqrt);
 
@@ -341,14 +326,14 @@ int main(int argc, char *argv[]) {
 		upc_forall ( i=0; i<size*size-1; i++; &a[mp(i)]){
 			a[mp(i)] = a[mp(i+1)]; //DOSUNIECIE JEDNEJ KOLUMNY A W LEWO
 		}
-		//w upc_forall powyzszym i ponizszym w niektorych polach beda zle wartosci, ale one beda nadpisywane poprawnymi kilka petli nizej
+		
 		upc_forall ( i=0; i<size*size-local_rows_global; i++; &b[mp(i)]){
 			b[mp(i)] = b[mp(i+local_rows_global)]; //DOSUNIECIE JEDNEJ KOLUMNY B W GORE
 		}
 
 		upc_barrier;
 
-		//DO ZROWNOLEGLENIA PONIZSZA PETLA
+		
 		for(proc = 0 ;proc < THREADS; proc++)
 		{
 			int firstElCurrent = getFirstElementFromBlock(proc);
@@ -358,7 +343,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		
-		//DO ZROWNOLEGLENIA PONIZSZA PETLA
+		
 		for(proc = 0 ;proc < THREADS; proc++)
 		{
 			int firstElCurrent = getFirstElementFromBlock(proc);
@@ -400,6 +385,5 @@ int main(int argc, char *argv[]) {
   }
   
   upc_barrier;
-  printf(" - Hello from thread %i\n", MYTHREAD);
   return 0;
 } 
