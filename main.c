@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "mpe.h"
 
 #define START_BCAST 0
 #define END_BCAST 1
@@ -15,99 +14,16 @@
 #define END_SEND 7
 
 /*do profilowania:
-
 kompilacja:
-/opt/nfs/mpich-3.2/bin/mpicc -o main main.c              -I/opt/nfs/mpe2-2.4.9b/include -L/opt/nfs/mpe2-2.4.9b/lib            -lmpe -lm -lpthread
-
+mpicc -o main main.c              -I/opt/nfs/mpe2-2.4.9b/include -L/opt/nfs/mpe2-2.4.9b/lib            -lmpe -lm -lpthread
 uruchomienie:
-/opt/nfs/mpich-3.2/bin/mpiexec  -n 1 ./main matrix.txt matrix2.txt
-/opt/nfs/mpich-3.2/bin/mpiexec  -n 4 ./main matrix.txt matrix2.txt
-/opt/nfs/mpich-3.2/bin/mpiexec  -n 9 ./main matrix.txt matrix2.txt
+mpiexec  -n 1 ./main matrix.txt matrix2.txt
+mpiexec  -n 4 ./main matrix.txt matrix2.txt
+mpiexec  -n 9 ./main matrix.txt matrix2.txt
 /opt/nfs/mpich-3.2/bin/mpiexec  -n 36 ./main matrix.txt matrix2.txt
 */
 
-// inicjalizacja MPI z uruchomieniem profilowania
-int MPI_Init( int *argc, char ***argv )
-{
 
-    int ret, myid;
-    ret = PMPI_Init(argc, argv);
-	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-	MPE_Init_log();
-    if(myid == 0){
-	    	//jeśli obecny proces jest procesem głownym uruchamiamy logowanie poszczegolnych operacji MPI
-		MPE_Describe_state(START_BCAST, END_BCAST,"broadcast","red");
-		MPE_Describe_state(START_ALLRED, END_ALLRED,"all reduce","yellow");
-		MPE_Describe_state(START_RECV, END_RECV,"receive","blue");
-		MPE_Describe_state(START_SEND, END_SEND,"send","white");
-	}
-	//Inicjalizacja procesu logowania dzialania programu
-	MPE_Start_log();
-    return ret;
-
-}
-
-//funkcja konczaca dzialanie MPI
-int MPI_Finalize( void )
-{
-
-    int ret;
-    //zapisanie logów do pliku
-    MPE_Finish_log("mpe_logs");
-    ret = PMPI_Finalize();
-
-    return ret;
-
-}
-//przeladownie funkcji MPI_Bcast aby logowac wywolania funkcji
-int MPI_Bcast( void *buf, int count, MPI_Datatype datatype,  
-	       int root, MPI_Comm comm ) 
-{ 
-    int ret, myid;
-	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-    MPE_Log_event(START_BCAST,myid, "Start\tbroadcast");
-    ret = PMPI_Bcast( buf, count, datatype, root, comm ); 
-    MPE_Log_event(END_BCAST,myid, "End\tbroadcast");
-    return ret; 
-} 
-
-//przeladownie funkcji MPI_Send aby logowac wywolania funkcji
-int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-                    MPI_Comm comm)
-{ 
-    int ret, myid;
-	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-    MPE_Log_event(START_SEND,myid, "Start\tsend");
-	MPI_Request request;
-    ret = PMPI_Isend(buf, count, datatype, dest, tag, comm, &request );
-	MPI_Request_free(&request);
-    MPE_Log_event(END_SEND,myid, "End\tsend");
-    return ret; 
-} 
-
-//przeladownie funkcji MPI_Recv aby logowac wywolania funkcji
-int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
-                           MPI_Comm comm, MPI_Status *status)                           
-{ 
-    int ret, myid;
-	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-    MPE_Log_event(START_RECV,myid, "Start\treceive");
-    ret = PMPI_Recv(buf, count, datatype, source, tag, comm, status);
-    MPE_Log_event(END_RECV,myid, "End\treceive");
-    return ret; 
-} 
-
-//przeladownie funkcji MPI_Allreduce aby logowac wywolania funkcji
-int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
-                         MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
-{ 
-    int ret, myid;
-	MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-    MPE_Log_event(START_ALLRED,myid, "Start\tallreduce");
-    ret = PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
-    MPE_Log_event(END_ALLRED,myid, "End\tallreduce");
-    return ret; 
-} 
 
 //define zdefiniowane na stronie 120 w ksiazce
 #define BLOCK_LOW(id,p,n) ((id)*(n)/(p))
@@ -941,4 +857,3 @@ int main(int argc, char *argv[])
     MPI_Finalize();
     return 0;
 }
-
