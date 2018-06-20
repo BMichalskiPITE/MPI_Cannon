@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define mpitype MPI_DOUBLE
-#define MPI_TYPE MPI_DOUBLE
 #define TYPE double
 
 //kompilacja i uruchomienie:
@@ -13,10 +11,10 @@
 // upcrun -n 4 ./main matrix.txt matrix.txt 
 //w miejsce -n 4 WPISUJEMY ILOSC WATKOW
 
-//ZMIENNE GLOBALNE, RACZEJ POWINNO SIE CHYBA Z NIMI COS ZROBIC
+
+
 int rows_global;
 int local_rows_global;
-
 
 //lokalne przesuniecie w bloku.
 //funkcja zwraca dla danego k, ktory jest to element w danym bloku
@@ -76,10 +74,6 @@ int indMat2Vec(int rows, int local_rows, int i, int j)
 	return mp(offsetByBlockVertical + offsetByBlockHorizontal + offsetByIVertical + offsetByJHorizontal);
 }
 
-//PASOWALOBY UZYWANE WARTOSCI Z TEJ METODY ZAPISAC DO TABLICY PRZY URUCHAMIANIU PROGRAMU
-//KAZDY PROCES MA SWOJA LOKALNA TABLICE
-//I KAZDY PROCES UZYWALBY TEJ TABLICY ZAMIAST ZA KAZDYM RAZEM WYWOLYWAC TE FUNKCJE
-//BO JEST DOSC SPORO OBLICZEN, ZWAZYWSZY ZE W KAZDEJ ITERACJI PO KILKA RAZY DLA KAZDEGO ELEMENTU MACIERZY JEST WYWOLYWANA TA FUNKCJA
 int indM2V(int i, int j)
 {
 	return indMat2Vec(rows_global, local_rows_global, i, j);
@@ -107,22 +101,24 @@ int getFirstElementFromBlock(int block)
 }
 
 
+//odczytanie macierzy z pliku
 void read_row_striped_matrix(
-    char *s, // IN file name
-	shared  TYPE ** storage,
-    shared int *m, //matrix rows
-    shared int *n //matrix cols
+    char *s, // nazwa pliku
+	shared  TYPE ** storage,// bufor wejsciowy
+    shared int *m, //ilosc wierszy
+    shared int *n //ilosc kolumn
 	)
 {
     int i;
 	int j;
-    FILE *infileptr; //input file pointer
-    shared int* local_rows = (shared int *) upc_all_alloc(THREADS, sizeof(int)); // rows on this proc
-    int p; // number of processes
+    FILE *infileptr; //wejsciowy wskaznik
+    shared int* local_rows = (shared int *) upc_all_alloc(THREADS, sizeof(int)); // ilosc wierszy dla konkretnego watku
+    int p; // ilosc watkow
 	p = THREADS;
 	int procsqrt = sqrt(THREADS);
 
 
+	//odczytanie ilosci kolumn i wierszy przez watek 0
     if (MYTHREAD == 0){
         infileptr = fopen(s, "r");
         if(infileptr == NULL) *m = 0;
@@ -138,7 +134,7 @@ void read_row_striped_matrix(
 		if(!(*m)) printf("Blad pliku! \n\n");
     }
 
-    
+	//obliczenie ilosci wierszy przypadajacych na pojedynczy watek
 	if(MYTHREAD == 0){
 		*local_rows = (*m)/procsqrt;
 	}
@@ -151,7 +147,7 @@ void read_row_striped_matrix(
 	*storage = (shared  TYPE*) upc_all_alloc( THREADS, local_rows_global*local_rows_global*sizeof(TYPE));
 	
 	
-
+	//czytanie wartosci do bufora
     if(MYTHREAD == 0){
 		for (i = 0 ; i< (*n); i++) {
 			for (j = 0; j<(*m); j++){
@@ -167,6 +163,7 @@ void read_row_striped_matrix(
 	upc_barrier;
 }
 
+//wypisanie macierzy do pliku
 void printMatrix(int size, shared  TYPE* matrix)
 {
 	int i, j;
@@ -181,6 +178,7 @@ void printMatrix(int size, shared  TYPE* matrix)
 	}
 }
 
+//zapis macierzy do pliku
 void saveMatrix(int size, shared TYPE* matrix) {
 	FILE *f = fopen("result_matrix.txt", "w+");
 	if(f == NULL){
@@ -190,13 +188,14 @@ void saveMatrix(int size, shared TYPE* matrix) {
 		int i,j;
 		for(i = 0; i < size; ++i){
 	        for(j = 0; j < size; ++j){
-	            fprintf(f,"%.0f ", matrix[indM2V(i,j)]);
+	            fprintf(f,"%.2f ", matrix[indM2V(i,j)]);
 	        }
 	    }
 	}
 	fclose(f);
 }
 
+//kopiowanie macierzy z toCopy do toPaste
 void copyMatrix(int size, shared  TYPE** toCopy, shared  TYPE** toPaste)
 {
 	int i, j;
@@ -224,11 +223,18 @@ int main(int argc, char *argv[]) {
   read_row_striped_matrix(argv[2], &b, ms, ns);
   int size = *ms;
   
+	if(size%((int)sqrt(THREADS)) != 0 || ((double)((int)sqrt(THREADS))) != sqrt(THREADS)){
+		if(MYTHREAD == 0)
+			printf("Wymiar macierzy wejsciowej musi byc podzielny bez reszty przez pierwiastek z liczby procesow!");
+    	return -1;
+	}
+  
+  //alokowanie wektora indeksow
   shared int ** indM = (shared int **) upc_all_alloc(THREADS, size * sizeof(TYPE*));
   for(i=0;i<size;++i){
   	indM[i] = (shared int *) upc_all_alloc(THREADS, size * sizeof(TYPE));
   }
-  
+  //przypisanie mapowania indeksow do ich rzeczywistego polozenia(punkt 2 dokumentacji)
   for(i=0;i<size;++i){
   	for(j=0;j<size;++j){
   		indM[i][j] = indM2V(i,j);
@@ -380,7 +386,8 @@ int main(int argc, char *argv[]) {
   upc_barrier;
   if(MYTHREAD == 0)
   {
-	printMatrix(size, res);
+	//zapis macierzy do pliku
+	printf("Matrix printed to file\n");
   	saveMatrix(size, res);
   }
   
